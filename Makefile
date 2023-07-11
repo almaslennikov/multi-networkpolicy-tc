@@ -88,8 +88,8 @@ $(GOVERALLS): | $(BASE) ; $(info  installing goveralls...)
 COVERAGE_MODE = count
 COVER_PROFILE = multi-networkpolicy-tc.cover
 test-coverage-tools: | $(GOVERALLS)
-test-coverage: test-coverage-tools | $(BASE) ; $(info  running coverage tests...) @ ## Run coverage tests
-	$Q go test -covermode=$(COVERAGE_MODE) -coverprofile=$(COVER_PROFILE) ./...
+test-coverage: envtest test-coverage-tools | $(BASE) ; $(info  running coverage tests...) @ ## Run coverage tests
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test -covermode=$(COVERAGE_MODE) -coverprofile=$(COVER_PROFILE) ./...
 
 .PHONY: upload-coverage
 upload-coverage: test-coverage-tools | $(BASE) ; $(info  uploading coverage results...) @ ## Upload coverage report
