@@ -76,16 +76,24 @@ unit-test: envtest ## Run unit tests.
 .PHONY: test
 test: lint unit-test ## Run all tests (lint, unit-test).
 
+HADOLINT_TOOL = $(BINDIR)/hadolint
+$(HADOLINT_TOOL): | $(BASE) ; $(info  installing hadolint...)
+	$(call wget-install-tool,$(HADOLINT_TOOL),"https://github.com/hadolint/hadolint/releases/download/v2.12.1-beta/hadolint-Linux-x86_64")
+
+GOVERALLS = $(BINDIR)/goveralls
+$(GOVERALLS): | $(BASE) ; $(info  installing goveralls...)
+	$(call go-install-tool,$(GOVERALLS),github.com/mattn/goveralls@latest)
+
 .PHONY: test-coverage
-test-coverage: | envtest gocovmerge gcov2lcov ## Run coverage tests
-	mkdir -p $(PROJECT_DIR)/build/coverage/pkgs
-	for pkg in $(TESTPKGS); do \
-		KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test \
-		-covermode=atomic \
-		-coverprofile="$(COVERAGE_DIR)/pkgs/`echo $$pkg | tr "/" "-"`.cover" $$pkg ;\
-	done
-	$(GOCOVMERGE) $(COVERAGE_DIR)/pkgs/*.cover > $(COVERAGE_DIR)/profile.out
-	$(GCOV2LCOV) -infile $(COVERAGE_DIR)/profile.out -outfile $(COVERAGE_DIR)/lcov.info
+COVERAGE_MODE = count
+COVER_PROFILE = multi-networkpolicy-tc.cover
+test-coverage-tools: | $(GOVERALLS)
+test-coverage: envtest test-coverage-tools | $(BASE) ; $(info  running coverage tests...) @ ## Run coverage tests
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test -covermode=$(COVERAGE_MODE) -coverprofile=$(COVER_PROFILE) ./...
+
+.PHONY: upload-coverage
+upload-coverage: test-coverage-tools | $(BASE) ; $(info  uploading coverage results...) @ ## Upload coverage report
+	$(GOVERALLS) -coverprofile=$(COVER_PROFILE) -service=github
 
 ##@ Build
 .PHONY: build
@@ -129,7 +137,7 @@ kustomize: ## Download kustomize locally if necessary.
 
 .PHONY: golangci-lint
 golangci-lint: ## Download golangci-lint locally if necessary.
-	$(call go-install-tool,$(GOLANGCILINT),github.com/golangci/golangci-lint/cmd/golangci-lint@v1.49.0)
+	$(call go-install-tool,$(GOLANGCILINT),github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3)
 
 .PHONY: mockery
 mockery: ## Download mockery if necessary.
@@ -147,6 +155,10 @@ gocovmerge: ## Download gocovmerge if necessary
 gcov2lcov: ## Download gcov2lcov if necessary
 	$(call go-install-tool,$(GCOV2LCOV),github.com/jandelgado/gcov2lcov@v1.0.5)
 
+.PHONY: hadolint
+hadolint: $(BASE) $(HADOLINT_TOOL); $(info  running hadolint...) @ ## Run hadolint
+	$Q $(HADOLINT_TOOL) Dockerfile
+
 .PHONY: clean
 clean:
 	@rm -rf build
@@ -159,5 +171,13 @@ define go-install-tool
 set -e ;\
 echo "Downloading $(2)" ;\
 GOBIN=$(PROJECT_DIR)/bin go install $(2) ;\
+}
+endef
+
+define wget-install-tool
+@[ -f $(1) ] || { \
+echo "Downloading $(2)" ;\
+wget -O $(1) $(2);\
+chmod +x $(1) ;\
 }
 endef
